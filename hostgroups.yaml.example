@@ -1,0 +1,14 @@
+Contoso Ltd.:
+  defaults:
+    username: administrator
+    password: tops3cr3t
+    domain: corp.contoso.com
+
+  hosts:
+    - displayname: Domain Controller
+      address: contosodc.corp.contoso.com
+
+    - displayname: Exchange Server
+      address: 10.10.10.2
+      username: exadmin
+      password: p@ssword1
