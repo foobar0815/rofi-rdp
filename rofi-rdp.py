@@ -129,24 +129,8 @@ def connect_to_host(data, group, host_displayname):
             secret_output = ""
 
         if not secret_output:
-            # Secure Fallback: Prompt the user directly via Rofi if keyring lookup fails
-            rofi_cmd = [
-                "rofi", "-dmenu", "-password", 
-                "-p", f"Password for {username}:", 
-                "-theme", "bunsen-dark"
-            ]
-            
-            try:
-                # Open Rofi to securely read the password via stdin
-                process = subprocess.Popen(rofi_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-                rofi_output, _ = process.communicate()
-                secret_output = rofi_output.strip()
-            except Exception:
-                secret_output = ""
-
-            if not secret_output:
-                print("RDP connection aborted: No password provided.")
-                sys.exit(1)
+            print(f"RDP connection aborted: No password found for {username} in YAML or Keyring.")
+            sys.exit(1)
 
         password = secret_output
     else:
