@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import shutil
 import sys
 import subprocess
 import yaml
@@ -13,7 +14,40 @@ import yaml
 KEYBOARD_LAYOUT = "0x00010407"  # German (IBM)
 WINDOW_WIDTH = "1440"
 WINDOW_HEIGHT = "900"
+# None searches for an SDL client; otherwise set an executable name or path.
+# Example: RDP_CLIENT = "xfreerdp"
+RDP_CLIENT = None
 # ==============================================================================
+
+
+def determine_rdp_client():
+    """Find the configured client or prefer explicitly named SDL3 clients."""
+    candidates = (
+        (RDP_CLIENT,) if RDP_CLIENT is not None else
+        ("sdl3-freerdp3", "sdl3-freerdp", "sdl-freerdp3", "sdl-freerdp")
+    )
+    # Generic SDL names may refer to SDL2 or SDL3, depending on the package.
+    for name in candidates:
+        executable = shutil.which(name)
+        if executable:
+            return executable
+    raise RuntimeError(
+        "No executable FreeRDP client found. Tried: " + ", ".join(candidates)
+        + ". Install an SDL3-based FreeRDP client or set RDP_CLIENT."
+    )
+
+
+def determine_client_environment():
+    """Force native Wayland for SDL in Wayland sessions, without X11 fallback."""
+    env = os.environ.copy()
+    session_type = env.get("XDG_SESSION_TYPE", "").lower()
+    if session_type == "wayland" or (
+        not session_type and env.get("WAYLAND_DISPLAY")
+    ):
+        # SDL3 and SDL2 use different names. Non-SDL clients ignore these.
+        env["SDL_VIDEO_DRIVER"] = "wayland"
+        env["SDL_VIDEODRIVER"] = "wayland"
+    return env
 
 
 def determine_yaml_path():
@@ -96,7 +130,7 @@ def display_hosts(group, group_data):
 
 
 def connect_to_host(data, group, host_displayname):
-    """Resolves credentials and launches xfreerdp in the background."""
+    """Resolves credentials and launches the selected RDP client."""
     group_data = data.get(group)
     if not group_data:
         sys.exit(1)
@@ -105,6 +139,12 @@ def connect_to_host(data, group, host_displayname):
     hosts = group_data.get("hosts", [])
     host = next((h for h in hosts if h.get("displayname") == host_displayname), None)
     if not host:
+        sys.exit(1)
+
+    try:
+        client = determine_rdp_client()
+    except RuntimeError as exc:
+        print(f"Error: {exc}")
         sys.exit(1)
 
     # Fallback logic for credentials (Host-specific -> Group Defaults)
@@ -140,9 +180,9 @@ def connect_to_host(data, group, host_displayname):
         print(f"Error: No address defined for {host_displayname}.")
         sys.exit(1)
 
-    # Build the xfreerdp command arguments array
+    # Build the FreeRDP command arguments array
     args = [
-        "xfreerdp",
+        client,
         f"/u:{username}",
         f"/v:{address}",
         f"/kbd:{KEYBOARD_LAYOUT}",
@@ -154,14 +194,17 @@ def connect_to_host(data, group, host_displayname):
         "/auto-reconnect-max-retries:5"
     ]
 
-    # ONLY append credentials if they actually have content to avoid xfreerdp syntax errors
+    # ONLY append credentials if they actually have content to avoid FreeRDP syntax errors
     if password and password.strip():
         args.append(f"/p:{password}")
     if domain and domain.strip():
         args.append(f"/d:{domain}")
 
-    # Launch xfreerdp asynchronously and detach it to allow Rofi to close instantly
-    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Launch the client asynchronously to allow Rofi to close instantly
+    subprocess.Popen(
+        args, env=determine_client_environment(),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
     
     sys.exit(0)
 
